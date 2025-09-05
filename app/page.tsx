@@ -1,103 +1,174 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [opacity, setOpacity] = useState(1);
+  const [spacing, setSpacing] = useState(0);
+  const [warp, setWarp] = useState(0);
+  const [selectedSquares, setSelectedSquares] = useState<Set<number>>(new Set());
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [beatToggle, setBeatToggle] = useState(false);
+  const [currentBeatSquares, setCurrentBeatSquares] = useState<number[]>(Array.from({length: 25}, (_, i) => i));
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Create array of which squares to show this beat
+  const getSquaresToRender = (alternate: boolean) => {
+    const squares: number[] = [];
+    for (let i = 0; i < 25; i++) {
+      if (alternate) {
+        // On alternate beat, EXCLUDE selected squares
+        if (!selectedSquares.has(i)) {
+          squares.push(i);
+        }
+      } else {
+        // On main beat, show ALL squares
+        squares.push(i);
+      }
+    }
+    return squares;
+  };
+
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const interval = setInterval(() => {
+      // Show squares for 200ms
+      setBeatToggle(prev => {
+        const newToggle = !prev;
+        setCurrentBeatSquares(getSquaresToRender(newToggle));
+        return newToggle;
+      });
+      setOpacity(1);
+      
+      // Then hide for 300ms
+      setTimeout(() => setOpacity(0), 200);
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, selectedSquares]);
+
+  const toggleSquare = (index: number) => {
+    setSelectedSquares(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  const getSquareColor = (index: number) => {
+    // When paused, show selected squares as gray
+    if (!isPlaying && selectedSquares.has(index)) {
+      return 'bg-gray-500';
+    }
+    // During play, all squares are red
+    return 'bg-red-500';
+  };
+
+  const getSquareTransform = (index: number) => {
+    const row = Math.floor(index / 5);
+    const col = index % 5;
+    
+    // Create wave-like paper folding effect
+    const waveX = Math.sin((col / 4) * Math.PI * 2 + warp * 2);
+    const waveY = Math.cos((row / 4) * Math.PI * 2 + warp * 2);
+    
+    // Subtle rotations that vary across the grid like paper creases
+    const rotateX = waveY * warp * 3 + (row - 2) * warp * 1.5;
+    const rotateY = waveX * warp * 3 + (col - 2) * warp * 1.5;
+    const rotateZ = (waveX * waveY) * warp * 2;
+    
+    // Gentle Z-axis displacement for paper-like depth
+    const translateZ = (waveX + waveY) * warp * 8;
+    
+    // Very subtle shadows/opacity changes for warp
+    const depthOpacity = warp === 0 ? 1 : Math.max(0.85, 1 - Math.abs(translateZ) * 0.005);
+    
+    // Calculate final opacity
+    let finalOpacity;
+    if (!isPlaying) {
+      // When paused, all squares are visible
+      finalOpacity = depthOpacity;
+    } else {
+      // During play, check if this square should be rendered this beat
+      if (currentBeatSquares.includes(index)) {
+        // Square is in render list, use attack envelope
+        finalOpacity = opacity * depthOpacity;
+      } else {
+        // Square not in render list, fully transparent
+        finalOpacity = 0;
+      }
+    }
+    
+    return {
+      transform: `rotateX(${rotateX}deg) rotateY(${rotateY}deg) rotateZ(${rotateZ}deg) translateZ(${translateZ}px)`,
+      opacity: finalOpacity,
+      transformStyle: 'preserve-3d' as const,
+    };
+  };
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-900">
+      <div className="flex flex-col items-center gap-8">
+        <div 
+          className="grid grid-cols-5" 
+          style={{ 
+            gap: `${spacing}px`,
+            perspective: '800px',
+            transformStyle: 'preserve-3d',
+          }}
+        >
+          {Array.from({ length: 25 }, (_, i) => (
+            <div
+              key={i}
+              onClick={() => toggleSquare(i)}
+              className={`w-16 h-16 ${getSquareColor(i)} transition-all duration-300 cursor-pointer hover:brightness-110`}
+              style={getSquareTransform(i)}
+            ></div>
+          ))}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        
+        <div className="flex flex-col gap-4">
+          <button
+            onClick={() => setIsPlaying(!isPlaying)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium"
+          >
+            {isPlaying ? 'Pause' : 'Play'}
+          </button>
+          
+          <div className="flex items-center gap-4 bg-gray-800 p-4 rounded-lg">
+            <label htmlFor="spacing" className="text-white text-sm">Spacing:</label>
+            <input
+              id="spacing"
+              type="range"
+              min="0"
+              max="20"
+              value={spacing}
+              onChange={(e) => setSpacing(Number(e.target.value))}
+              className="w-48"
+            />
+            <span className="text-white text-sm w-12">{spacing}px</span>
+          </div>
+
+          <div className="flex items-center gap-4 bg-gray-800 p-4 rounded-lg">
+            <label htmlFor="warp" className="text-white text-sm">Warp:</label>
+            <input
+              id="warp"
+              type="range"
+              min="0"
+              max="10"
+              step="0.1"
+              value={warp}
+              onChange={(e) => setWarp(Number(e.target.value))}
+              className="w-48"
+            />
+            <span className="text-white text-sm w-12">{warp.toFixed(1)}</span>
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
